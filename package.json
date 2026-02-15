@@ -2,7 +2,7 @@
   "name": "fotokirsti-backend",
   "scripts": {
     "dev": "bun run --hot src/index.ts",
-    "build": "bun build ./src/index.ts --outdir ./dist --target node",
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun",
     "start": "NODE_ENV=production bun src/index.ts",
     "db:push": "bunx drizzle-kit push",
     "db:generate": "bunx drizzle-kit generate",
