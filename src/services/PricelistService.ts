@@ -4,6 +4,7 @@ import { desc } from "drizzle-orm";
 import { generateId } from "better-auth";
 import { schema } from "../db";
 import { HTTPAppException } from "../lib/errors";
+import { s3Options } from "../lib/env";
 
 type PriceListRow = typeof schema.priceList.$inferSelect;
 export type PriceListWithUrl = PriceListRow & { fileUrl: string };
@@ -14,7 +15,8 @@ export class PricelistService {
   constructor(private db: ReturnType<typeof import("../db").createDb>) {}
 
   private getFileUrl(s3Key: string): string {
-    return s3.file(s3Key).presign({
+    return s3.file(s3Key, s3Options).presign({
+      ...s3Options,
       method: "GET",
       expiresIn: PRESIGN_GET_EXPIRES_IN,
     });
@@ -33,6 +35,7 @@ export class PricelistService {
     const s3Key = `priceList/${fileId}.pdf`;
 
     const uploadUrl = s3.presign(s3Key, {
+      ...s3Options,
       method: "PUT",
       type,
       expiresIn: 3600,
@@ -108,7 +111,7 @@ export class PricelistService {
     });
 
     try {
-      await s3.file(s3Key).delete();
+      await s3.file(s3Key, s3Options).delete();
     } catch (e) {
       console.error(`S3 delete failed for ${s3Key}:`, e);
       throw HTTPAppException.InternalError(
@@ -163,7 +166,7 @@ export class PricelistService {
     const s3Errors: string[] = [];
     for (const key of s3KeysToDelete) {
       try {
-        await s3.file(key).delete();
+        await s3.file(key, s3Options).delete();
       } catch (e) {
         console.error(`S3 delete failed for ${key}:`, e);
         s3Errors.push(key);
