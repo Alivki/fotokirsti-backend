@@ -1,0 +1,15 @@
+services:
+  fotokirsti-db:
+    image: postgres:16-alpine
+    container_name: fotokirsti-db
+    environment:
+      POSTGRES_USER: iver
+      POSTGRES_PASSWORD: iver
+      POSTGRES_DB: fotokirsti_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - fotokirsti_data:/var/lib/postgresql/data
+
+volumes:
+  fotokirsti_data:

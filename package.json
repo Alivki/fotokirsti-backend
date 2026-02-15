@@ -1,0 +1,31 @@
+{
+  "name": "fotokirsti-backend",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "build": "bun build ./src/index.ts --outdir ./dist --target node",
+    "start": "NODE_ENV=production bun src/index.ts",
+    "db:push": "bunx drizzle-kit push",
+    "db:generate": "bunx drizzle-kit generate",
+    "db:migrate": "bunx drizzle-kit migrate",
+    "db:studio": "bunx drizzle-kit studio",
+    "db:seed": "bun src/db/seed.ts",
+    "auth:migrate": "bun x @better-auth/cli migrate",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "^0.7.6",
+    "better-auth": "^1.4.18",
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.11.9",
+    "postgres": "^3.4.8",
+    "resend": "^6.9.2",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^25.2.3",
+    "drizzle-kit": "^0.31.9"
+  }
+}
