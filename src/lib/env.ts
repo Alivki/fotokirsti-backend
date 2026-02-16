@@ -38,7 +38,7 @@ const envSchema = z
     BETTER_AUTH_SECRET: z.string().min(32, "BETTER_AUTH_SECRET must be at least 32 characters"),
     BETTER_AUTH_URL: urlSchema.default("http://localhost:4000"),
 
-    // CORS / Frontend
+    // CORS / Frontend origin only (no path, no /api)
     FRONTEND_URL: urlSchema.default("http://localhost:3000"),
 
     // AWS / S3

@@ -19,7 +19,7 @@ Set these in your Railway project → Variables.
 | `DATABASE_URL` | Yes | Postgres connection string (use Railway Postgres plugin and copy from service). |
 | `BETTER_AUTH_SECRET` | Yes | At least 32 characters; use a long random string. |
 | `BETTER_AUTH_URL` | Yes | Your backend base URL, e.g. `https://your-app.railway.app` (or `your-app.railway.app` — `https://` is added automatically). |
-| `FRONTEND_URL` | Yes | Frontend origin for CORS, e.g. `https://your-frontend.vercel.app` (same optional `https://` behavior). |
+| `FRONTEND_URL` | Yes | Frontend **origin** only for CORS (no path): e.g. `https://your-frontend.vercel.app` — do **not** add `/api`. |
 | `AWS_ACCESS_KEY_ID` | Yes | AWS access key for S3. |
 | `AWS_BUCKET_NAME` | Yes | S3 bucket name. |
 | `AWS_REGION` | Yes | AWS region, e.g. `eu-north-1`. |
@@ -28,7 +28,7 @@ Set these in your Railway project → Variables.
 
 After deployment, set `BETTER_AUTH_URL` to your actual backend URL (e.g. `https://example.railway.app`) and ensure your frontend uses this URL for API and auth.
 
-**CORS:** `FRONTEND_URL` must be set on the **backend** service (not the frontend). It should match the frontend origin exactly, e.g. `https://example.up.railway.app`. If you get "blocked by CORS policy", check that the backend has this variable set and redeploy.
+**CORS:** `FRONTEND_URL` must be set on the **backend** service (not the frontend). Use the frontend origin only (no trailing path like `/api`), e.g. `https://fotokirsti-frontend-production.up.railway.app`. If you get "blocked by CORS policy", check that the backend has this variable set and redeploy.
 
 ## Creating tables in the production database
 

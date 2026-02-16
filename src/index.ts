@@ -109,11 +109,14 @@ export default {
     if (req.method === "OPTIONS") {
       const origin = req.headers.get("Origin") ?? "";
       const allowOrigin = origin.startsWith("http") ? origin : origin ? `https://${origin}` : "";
+      // Must send a non-empty origin for credentials: true; fallback to allow our known frontend
+      const corsOrigin =
+        allowOrigin || "https://fotokirsti-frontend-production.up.railway.app";
       return Promise.resolve(
         new Response(null, {
           status: 204,
           headers: {
-            "Access-Control-Allow-Origin": allowOrigin,
+            "Access-Control-Allow-Origin": corsOrigin,
             "Access-Control-Allow-Credentials": "true",
             "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type, Authorization",
