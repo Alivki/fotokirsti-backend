@@ -28,13 +28,9 @@ export function createAuth(ctx: { db: ReturnType<typeof createDb> }) {
     },
     advanced: {
       cookies: {
-        sessionToken: {
-          attributes: {
-            httpOnly: true,
-            secure: true,
-            sameSite: "none",
-          },
-        },
+        sessionToken: { attributes: { secure: true, httpOnly: true, sameSite: "none" } },
+        sessionData: { attributes: { secure: true, httpOnly: true, sameSite: "none" } },
+        csrfToken: { attributes: { secure: true, httpOnly: true, sameSite: "none" } },
       },
       crossSilo: true,
     },
