@@ -47,60 +47,33 @@ async function bootstrap() {
       cors({
         origin: env.FRONTEND_URL,
         credentials: true,
+        allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allowHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+        exposeHeaders: ["Content-Length", "X-Kuma-Revision"],
       })
   );
 
-  // Preflight for Better Auth
-  app.options("/api/auth/*", (c) => {
-    c.header("Access-Control-Allow-Origin", env.FRONTEND_URL);
-    c.header("Access-Control-Allow-Credentials", "true");
-    c.header(
-        "Access-Control-Allow-Headers",
-        "Content-Type, Authorization, X-Requested-With"
-    );
-    c.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-    return c.body(null, 204);
-  });
-
-  /**
-   * -------------------
-   * Better Auth Mount
-   * -------------------
-   */
   app.all("/api/auth/*", async (c) => {
-    const { auth } = c.get("ctx");
-
-    const response = await auth.handler(c.req.raw);
-
-    // Add CORS headers
-    response.headers.set("Access-Control-Allow-Origin", env.FRONTEND_URL);
-    response.headers.set("Access-Control-Allow-Credentials", "true");
-
-    return response;
+    const res = await c.get("ctx").auth.handler(c.req.raw);
+    return res;
   });
 
-  /**
-   * -------------------
-   * Protected Routes
-   * -------------------
-   */
-  // Protect everything under /api/* EXCEPT /api/auth/*
+  app.route("/api", publicRoutes);
+
   app.use("/api/*", async (c, next) => {
-    if (c.req.path.startsWith("/api/auth/")) {
+    // Extra safety: skip auth for routes already handled or public
+    if (c.req.path.startsWith("/api/auth")) return next();
+
+    // You can add more public paths here if needed
+    const publicPaths = ["/api/health", "/api/photos", "/api/pricelist"];
+    if (publicPaths.some(p => c.req.path === p && c.req.method === 'GET')) {
       return next();
     }
+
     return requireAuth(c, next);
   });
 
-  // Mount protected routes
   app.route("/api", protectedRoutes);
-
-  /**
-   * -------------------
-   * Public Routes
-   * -------------------
-   */
-  app.route("/api", publicRoutes);
 
   // Root health check
   app.get("/", (c) => c.text("OK"));
