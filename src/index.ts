@@ -57,8 +57,7 @@ async function bootstrap() {
     return auth.handler(c.req.raw);
   });
 
-  app.route("/api", publicRoutes);
-
+  // Protected routes first so /api/photos/admin matches before /api/photos/:id
   app.use("/api/*", async (c, next) => {
     if (c.req.path.startsWith("/api/auth")) return next();
 
@@ -72,6 +71,7 @@ async function bootstrap() {
   });
 
   app.route("/api", protectedRoutes);
+  app.route("/api", publicRoutes);
 
   // Root health check
   app.get("/", (c) => c.text("OK"));
