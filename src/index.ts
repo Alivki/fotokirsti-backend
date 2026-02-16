@@ -10,6 +10,13 @@ import {
 import type { Variables } from "./lib/types";
 import { env } from "./lib/env";
 import { globalErrorHandler, notFoundHandler } from "./lib/errors";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": env.FRONTEND_URL,
+  "Access-Control-Allow-Credentials": "true",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
 import publicRoutes from "./routes/public";
 import protectedRoutes from "./routes/protected";
 import { requireAuth } from "./middleware/auth";
@@ -48,6 +55,12 @@ export const createApp = async (variables?: { ctx: AppContext; service: AppServi
       c.set("service", service);
       await next();
     })
+    .use("*", async (c, next) => {
+      if (c.req.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: corsHeaders });
+      }
+      await next();
+    })
     .use(
       "*",
       cors({
@@ -58,8 +71,18 @@ export const createApp = async (variables?: { ctx: AppContext; service: AppServi
       }),
     )
     .route("/", api)
-    .onError(globalErrorHandler)
-    .notFound(notFoundHandler);
+    .onError((err, c) => {
+      const res = globalErrorHandler(err, c);
+      res.headers.set("Access-Control-Allow-Origin", env.FRONTEND_URL);
+      res.headers.set("Access-Control-Allow-Credentials", "true");
+      return res;
+    })
+    .notFound((c) => {
+      const res = notFoundHandler(c);
+      res.headers.set("Access-Control-Allow-Origin", env.FRONTEND_URL);
+      res.headers.set("Access-Control-Allow-Credentials", "true");
+      return res;
+    });
 
   return app;
 };

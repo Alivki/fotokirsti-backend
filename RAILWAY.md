@@ -28,6 +28,8 @@ Set these in your Railway project → Variables.
 
 After deployment, set `BETTER_AUTH_URL` to your actual backend URL (e.g. `https://example.railway.app`) and ensure your frontend uses this URL for API and auth.
 
+**CORS:** `FRONTEND_URL` must be set on the **backend** service (not the frontend). It should match the frontend origin exactly, e.g. `https://example.up.railway.app`. If you get "blocked by CORS policy", check that the backend has this variable set and redeploy.
+
 ## Creating tables in the production database
 
 You need to run migrations (or `db:push`) against the **production** `DATABASE_URL` so tables exist before the app runs.
