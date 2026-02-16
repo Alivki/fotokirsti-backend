@@ -54,22 +54,22 @@ async function bootstrap() {
 
   app.all("/api/auth/*", async (c) => {
     const auth = c.get("ctx").auth;
-    return auth.handler(c.req.raw);
+    const res = await auth.handler(c.req.raw);
+    return res;
   });
 
   app.route("/api", publicRoutes);
 
   app.use("/api/*", async (c, next) => {
-    // Extra safety: skip auth for routes already handled or public
     if (c.req.path.startsWith("/api/auth")) return next();
 
-    // You can add more public paths here if needed
     const publicPaths = ["/api/health", "/api/photos", "/api/pricelist"];
     if (publicPaths.some(p => c.req.path === p && c.req.method === 'GET')) {
       return next();
     }
 
-    return requireAuth(c, next);
+    // Use 'as any' to bypass the complex Hono Context type mismatch
+    return (requireAuth as any)(c, next);
   });
 
   app.route("/api", protectedRoutes);
