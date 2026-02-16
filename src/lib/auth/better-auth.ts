@@ -12,6 +12,7 @@ import type { createDb } from "../../db";
 export function createAuth(ctx: { db: ReturnType<typeof createDb> }) {
   return betterAuth({
     baseURL: env.BETTER_AUTH_URL,
+    trustedOrigins: [env.FRONTEND_URL],
     basePath: "/api/auth",
     secret: env.BETTER_AUTH_SECRET,
     database: drizzleAdapter(ctx.db, {
