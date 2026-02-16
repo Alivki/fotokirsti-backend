@@ -54,8 +54,7 @@ async function bootstrap() {
 
   app.all("/api/auth/*", async (c) => {
     const auth = c.get("ctx").auth;
-    const res = await auth.handler(c.req.raw);
-    return res;
+    return auth.handler(c.req.raw);
   });
 
   app.route("/api", publicRoutes);

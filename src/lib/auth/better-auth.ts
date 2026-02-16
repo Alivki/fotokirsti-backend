@@ -23,8 +23,7 @@ export function createAuth(ctx: { db: ReturnType<typeof createDb> }) {
       strategy: "jwt",
       expiryAge: 60 * 60 * 24,
       cookieCache: {
-        enabled: true,
-        maxAge: 5 * 60,
+        enabled: false,
       },
     },
     advanced: {
