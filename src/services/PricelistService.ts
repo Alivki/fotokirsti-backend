@@ -22,7 +22,7 @@ export class PricelistService {
     });
   }
 
-  async createAndActivate(name: string, type: string, fileSize?: number,) {
+  async createAndActivate(name: string, type: string, fileSize?: number) {
     if (!name) {
       throw HTTPAppException.BadRequest("File name is required");
     }
@@ -42,7 +42,7 @@ export class PricelistService {
     });
 
     const created = await this.db.transaction(async (tx) => {
-      await tx.update(schema.priceList).set({ isActive: false });
+      await tx.update(schema.priceList).set({ isActive: false }).execute();
 
       const [inserted] = await tx
           .insert(schema.priceList)
@@ -65,12 +65,36 @@ export class PricelistService {
     const rows = await this.db
         .select()
         .from(schema.priceList)
-        .orderBy(desc(schema.priceList.createdAt));
+        .orderBy(
+            desc(schema.priceList.isActive),
+            desc(schema.priceList.createdAt)
+        );
 
     return rows.map((r) => ({
       ...r,
       fileUrl: this.getFileUrl(r.s3Key),
     }));
+  }
+
+  async setActive(id: string) {
+    if (!id) {
+      throw HTTPAppException.BadRequest("File id is required");
+    }
+
+    return this.db.transaction(async (tx) => {
+      await tx.update(schema.priceList).set({ isActive: false }).execute();
+
+      const [updated] = await tx
+          .update(schema.priceList)
+          .set({ isActive: true })
+          .where(eq(schema.priceList.id, id))
+          .returning();
+
+      if (!updated) {
+        throw HTTPAppException.NotFound("Pricelist");
+      }
+      return updated;
+    });
   }
 
   async getCurrent(): Promise<PriceListWithUrl> {

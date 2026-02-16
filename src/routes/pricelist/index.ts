@@ -4,6 +4,7 @@ import {getRoute} from "./get";
 import {postRoute} from "./post";
 import {deleteOneRoute} from "./deleteOne";
 import {deleteManyRoute} from "./deleteMany";
+import {setActiveRoute} from "./setActive";
 
 /**
  * Authors resource router.
@@ -14,6 +15,7 @@ export const pricelistRoutes = route()
 
 export const pricelistRoutesProtected = route()
     .route("/history", historyRoute)
+    .route("setActive", setActiveRoute)
     .route("/", postRoute)
     .route("/", deleteOneRoute)
     .route("/", deleteManyRoute)
