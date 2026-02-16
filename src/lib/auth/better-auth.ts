@@ -37,6 +37,7 @@ export function createAuth(ctx: { db: ReturnType<typeof createDb> }) {
           },
         },
       },
+      crossSilo: true,
     },
     emailAndPassword: {
       enabled: true,
