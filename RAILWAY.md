@@ -32,6 +32,8 @@ After deployment, set `BETTER_AUTH_URL` to your actual backend URL (e.g. `https:
 
 **502 "Application failed to respond":** The server now starts without validating env at load, so OPTIONS (preflight) should always get a 204 with CORS. If you still get 502, check **Railway → your backend service → Logs** for startup errors (e.g. `ZodError` for invalid `BETTER_AUTH_URL`/`FRONTEND_URL`, or DB connection failures). Fix the reported env or DB issue and redeploy.
 
+**ECONNRESET:** If you see `Error: read ECONNRESET` in logs, it usually means a TCP connection was closed by the other side (client disconnected, or DB/proxy closed an idle connection). The DB client is configured with `idle_timeout`, `connect_timeout`, and `max_lifetime` to reduce stale connections. If it still happens often, check Railway Postgres limits and that the frontend isn’t aborting requests (e.g. navigation before the request completes).
+
 ## Creating tables in the production database
 
 You need to run migrations (or `db:push`) against the **production** `DATABASE_URL` so tables exist before the app runs.
