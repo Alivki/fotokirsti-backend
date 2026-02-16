@@ -28,6 +28,33 @@ function getApp(): Promise<App> {
   return appPromise;
 }
 
+function handleFetch(req: Request): Response | Promise<Response> {
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: new Headers(corsHeadersFor(req.headers.get("Origin"))),
+    });
+  }
+  return getApp()
+    .then((app) => app.fetch(req))
+    .catch((err) => {
+      console.error("Request failed (app not ready or error):", err);
+      return new Response(
+        JSON.stringify({
+          error: "Service unavailable",
+          message: "Application failed to start or encountered an error.",
+        }),
+        {
+          status: 503,
+          headers: new Headers({
+            "Content-Type": "application/json",
+            ...corsHeadersFor(req.headers.get("Origin")),
+          }),
+        },
+      );
+    });
+}
+
 if (process.env.NODE_ENV !== "test") {
   getApp().then(
     () => console.log(`🔥 Fotokirsti Backend: http://localhost:${port}/api`),
@@ -35,34 +62,9 @@ if (process.env.NODE_ENV !== "test") {
   );
 }
 
-export default {
+// Explicit Bun.serve so the server always starts (Railway; avoid relying on export default)
+Bun.serve({
   port,
-  fetch: (req: Request, ...args: unknown[]) => {
-    if (req.method === "OPTIONS") {
-      return Promise.resolve(
-        new Response(null, {
-          status: 204,
-          headers: corsHeadersFor(req.headers.get("Origin")),
-        }),
-      );
-    }
-    return getApp()
-      .then((app) => app.fetch(req, ...args))
-      .catch((err) => {
-        console.error("Request failed (app not ready or error):", err);
-        return new Response(
-          JSON.stringify({
-            error: "Service unavailable",
-            message: "Application failed to start or encountered an error.",
-          }),
-          {
-            status: 503,
-            headers: {
-              "Content-Type": "application/json",
-              ...corsHeadersFor(req.headers.get("Origin")),
-            },
-          },
-        );
-      });
-  },
-};
+  hostname: "0.0.0.0",
+  fetch: handleFetch,
+});

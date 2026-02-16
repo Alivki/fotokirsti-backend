@@ -1,12 +1,12 @@
 # Deploying to Railway
 
-## Build & start
+## Build & start (Railpack)
 
-- **Build command:** (leave empty or `bun install`)
-- **Start command:** `bun run start` (or `bun src/index.ts`)
-- **Root directory:** project root
+This project uses **Railpack** (not Nixpacks). The start command is set in `railpack.json`:
 
-Railway sets `PORT` for you; the app reads it from the environment.
+- **Start command:** `bun run start` (in `railpack.json` → `deploy.startCommand`)
+
+Railway sets `PORT` for you; the app reads it from the environment. Railpack will run `bun install` and then the start command.
 
 ## Environment variables (add in Railway dashboard)
 
