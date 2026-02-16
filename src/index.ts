@@ -48,14 +48,13 @@ async function bootstrap() {
         origin: env.FRONTEND_URL,
         credentials: true,
         allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allowHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-        exposeHeaders: ["Content-Length", "X-Kuma-Revision"],
+        allowHeaders: ["Content-Type", "Authorization", "Accept", "Origin"], // Added Origin/Accept
       })
   );
 
   app.all("/api/auth/*", async (c) => {
-    const res = await c.get("ctx").auth.handler(c.req.raw);
-    return res;
+    const auth = c.get("ctx").auth;
+    return auth.handler(c.req.raw);
   });
 
   app.route("/api", publicRoutes);

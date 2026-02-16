@@ -31,8 +31,8 @@ export function createAuth(ctx: { db: ReturnType<typeof createDb> }) {
         sessionToken: {
           attributes: {
             httpOnly: true,
-            secure: env.NODE_ENV === "production",
-            sameSite: "lax",
+            secure: true,
+            sameSite: "none",
           },
         },
       },
