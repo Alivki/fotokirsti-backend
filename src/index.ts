@@ -31,6 +31,7 @@ async function bootstrap() {
   const ctx: AppContext = await createAppContext();
   const services: AppServices = createAppServices(ctx);
 
+  // Logger
   app.use("*", logger());
 
   // Attach DI context
@@ -40,7 +41,7 @@ async function bootstrap() {
     await next();
   });
 
-  // Single CORS system
+  // Global CORS
   app.use(
       "*",
       cors({
@@ -48,6 +49,18 @@ async function bootstrap() {
         credentials: true,
       })
   );
+
+  // Preflight for Better Auth
+  app.options("/api/auth/*", (c) => {
+    c.header("Access-Control-Allow-Origin", env.FRONTEND_URL);
+    c.header("Access-Control-Allow-Credentials", "true");
+    c.header(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, X-Requested-With"
+    );
+    c.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+    return c.body(null, 204);
+  });
 
   /**
    * -------------------
@@ -59,7 +72,7 @@ async function bootstrap() {
 
     const response = await auth.handler(c.req.raw);
 
-    // Manually decorate Better Auth response
+    // Add CORS headers
     response.headers.set("Access-Control-Allow-Origin", env.FRONTEND_URL);
     response.headers.set("Access-Control-Allow-Credentials", "true");
 
@@ -71,7 +84,15 @@ async function bootstrap() {
    * Protected Routes
    * -------------------
    */
-  app.use("/api/*", requireAuth);
+  // Protect everything under /api/* EXCEPT /api/auth/*
+  app.use("/api/*", async (c, next) => {
+    if (c.req.path.startsWith("/api/auth/")) {
+      return next();
+    }
+    return requireAuth(c, next);
+  });
+
+  // Mount protected routes
   app.route("/api", protectedRoutes);
 
   /**
@@ -81,8 +102,10 @@ async function bootstrap() {
    */
   app.route("/api", publicRoutes);
 
+  // Root health check
   app.get("/", (c) => c.text("OK"));
 
+  // Error handling with CORS
   app.onError((err, c) => {
     const res = globalErrorHandler(err, c);
     res.headers.set("Access-Control-Allow-Origin", env.FRONTEND_URL);
@@ -90,6 +113,7 @@ async function bootstrap() {
     return res;
   });
 
+  // Not found handling with CORS
   app.notFound((c) => {
     const res = notFoundHandler(c);
     res.headers.set("Access-Control-Allow-Origin", env.FRONTEND_URL);
@@ -97,6 +121,7 @@ async function bootstrap() {
     return res;
   });
 
+  // Start Bun server
   Bun.serve({
     port,
     hostname: "0.0.0.0",
