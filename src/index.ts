@@ -11,12 +11,17 @@ import type { Variables } from "./lib/types";
 import { env } from "./lib/env";
 import { globalErrorHandler, notFoundHandler } from "./lib/errors";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": env.FRONTEND_URL,
-  "Access-Control-Allow-Credentials": "true",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
+function getCorsHeaders(origin: string): Record<string, string> {
+  const o = origin.trim();
+  const allowOrigin = o.startsWith("http") ? o : o ? `https://${o}` : "";
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+}
+
 import publicRoutes from "./routes/public";
 import protectedRoutes from "./routes/protected";
 import { requireAuth } from "./middleware/auth";
@@ -57,7 +62,7 @@ export const createApp = async (variables?: { ctx: AppContext; service: AppServi
     })
     .use("*", async (c, next) => {
       if (c.req.method === "OPTIONS") {
-        return new Response(null, { status: 204, headers: corsHeaders });
+        return new Response(null, { status: 204, headers: getCorsHeaders(env.FRONTEND_URL) });
       }
       await next();
     })
@@ -99,6 +104,23 @@ if (env.NODE_ENV !== "test") {
 
 export default {
   port: env.PORT,
-  fetch: (req: Request, ...args: unknown[]) =>
-    appPromise.then((app) => app.fetch(req, ...args)),
+  fetch: (req: Request, ...args: unknown[]) => {
+    // Handle preflight immediately so CORS works even if createApp() is still starting or fails
+    if (req.method === "OPTIONS") {
+      const origin = req.headers.get("Origin") ?? "";
+      const allowOrigin = origin.startsWith("http") ? origin : origin ? `https://${origin}` : "";
+      return Promise.resolve(
+        new Response(null, {
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": allowOrigin,
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        }),
+      );
+    }
+    return appPromise.then((app) => app.fetch(req, ...args));
+  },
 };
