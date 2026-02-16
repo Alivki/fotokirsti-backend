@@ -1,129 +1,68 @@
-import { Hono } from "hono";
-import { logger } from "hono/logger";
-import { cors } from "hono/cors";
-import {
-  type AppContext,
-  type AppServices,
-  createAppContext,
-  createAppServices,
-} from "./lib/ctx";
-import type { Variables } from "./lib/types";
-import { env } from "./lib/env";
-import { globalErrorHandler, notFoundHandler } from "./lib/errors";
+/**
+ * Entrypoint: must not import env or anything that imports env, so the server
+ * can start and respond to OPTIONS (preflight) even when env validation would fail.
+ * createApp() is loaded lazily via dynamic import() on first non-OPTIONS request.
+ */
 
-function getCorsHeaders(origin: string): Record<string, string> {
-  const o = origin.trim();
+import type { App } from "./app";
+
+function corsHeadersFor(origin: string | null): Record<string, string> {
+  const o = (origin ?? "").trim();
   const allowOrigin = o.startsWith("http") ? o : o ? `https://${o}` : "";
+  const corsOrigin = allowOrigin || "https://fotokirsti-frontend-production.up.railway.app";
   return {
-    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Origin": corsOrigin,
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
   };
 }
 
-import publicRoutes from "./routes/public";
-import protectedRoutes from "./routes/protected";
-import { requireAuth } from "./middleware/auth";
-import { startBackgroundJobs } from "./lib/jobs";
+const port = Number(process.env.PORT) || 4000;
 
-export const createApp = async (variables?: { ctx: AppContext; service: AppServices }) => {
-  let ctx: AppContext;
-  let service: AppServices;
-  if (variables) {
-    ctx = variables.ctx;
-    service = variables.service;
-  } else {
-    ctx = await createAppContext();
-    service = createAppServices(ctx);
-    startBackgroundJobs(ctx);
+let appPromise: Promise<App> | null = null;
+function getApp(): Promise<App> {
+  if (!appPromise) {
+    appPromise = import("./app").then((m) => m.createApp());
   }
+  return appPromise;
+}
 
-  const protectedApp = new Hono<{ Variables: Variables }>()
-    .use("*", requireAuth)
-    .route("/", protectedRoutes);
-
-  const api = new Hono<{ Variables: Variables }>()
-    .basePath("/api")
-    .on(["POST", "GET"], "/auth/*", (c) => {
-      const { auth } = c.get("ctx");
-      return auth.handler(c.req.raw);
-    })
-    .get("/", (c) => c.text("OK"))
-    .route("/", protectedApp)
-    .route("/", publicRoutes);
-
-  const app = new Hono<{ Variables: Variables }>()
-    .use(logger())
-    .use("*", async (c, next) => {
-      c.set("ctx", ctx);
-      c.set("service", service);
-      await next();
-    })
-    .use("*", async (c, next) => {
-      if (c.req.method === "OPTIONS") {
-        return new Response(null, { status: 204, headers: getCorsHeaders(env.FRONTEND_URL) });
-      }
-      await next();
-    })
-    .use(
-      "*",
-      cors({
-        origin: env.FRONTEND_URL,
-        credentials: true,
-        allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allowHeaders: ["Content-Type", "Authorization"],
-      }),
-    )
-    .route("/", api)
-    .onError((err, c) => {
-      const res = globalErrorHandler(err, c);
-      res.headers.set("Access-Control-Allow-Origin", env.FRONTEND_URL);
-      res.headers.set("Access-Control-Allow-Credentials", "true");
-      return res;
-    })
-    .notFound((c) => {
-      const res = notFoundHandler(c);
-      res.headers.set("Access-Control-Allow-Origin", env.FRONTEND_URL);
-      res.headers.set("Access-Control-Allow-Credentials", "true");
-      return res;
-    });
-
-  return app;
-};
-
-export type App = Awaited<ReturnType<typeof createApp>>;
-
-const appPromise = createApp();
-
-if (env.NODE_ENV !== "test") {
-  appPromise.then(() => {
-    console.log(`🔥 Fotokirsti Backend: http://localhost:${env.PORT}/api`);
-  });
+if (process.env.NODE_ENV !== "test") {
+  getApp().then(
+    () => console.log(`🔥 Fotokirsti Backend: http://localhost:${port}/api`),
+    (err) => console.error("App failed to start:", err),
+  );
 }
 
 export default {
-  port: env.PORT,
+  port,
   fetch: (req: Request, ...args: unknown[]) => {
-    // Handle preflight immediately so CORS works even if createApp() is still starting or fails
     if (req.method === "OPTIONS") {
-      const origin = req.headers.get("Origin") ?? "";
-      const allowOrigin = origin.startsWith("http") ? origin : origin ? `https://${origin}` : "";
-      // Must send a non-empty origin for credentials: true; fallback to allow our known frontend
-      const corsOrigin =
-        allowOrigin || "https://fotokirsti-frontend-production.up.railway.app";
       return Promise.resolve(
         new Response(null, {
           status: 204,
-          headers: {
-            "Access-Control-Allow-Origin": corsOrigin,
-            "Access-Control-Allow-Credentials": "true",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-          },
+          headers: corsHeadersFor(req.headers.get("Origin")),
         }),
       );
     }
-    return appPromise.then((app) => app.fetch(req, ...args));
+    return getApp()
+      .then((app) => app.fetch(req, ...args))
+      .catch((err) => {
+        console.error("Request failed (app not ready or error):", err);
+        return new Response(
+          JSON.stringify({
+            error: "Service unavailable",
+            message: "Application failed to start or encountered an error.",
+          }),
+          {
+            status: 503,
+            headers: {
+              "Content-Type": "application/json",
+              ...corsHeadersFor(req.headers.get("Origin")),
+            },
+          },
+        );
+      });
   },
 };

@@ -30,6 +30,8 @@ After deployment, set `BETTER_AUTH_URL` to your actual backend URL (e.g. `https:
 
 **CORS:** `FRONTEND_URL` must be set on the **backend** service (not the frontend). Use the frontend origin only (no trailing path like `/api`), e.g. `https://fotokirsti-frontend-production.up.railway.app`. If you get "blocked by CORS policy", check that the backend has this variable set and redeploy.
 
+**502 "Application failed to respond":** The server now starts without validating env at load, so OPTIONS (preflight) should always get a 204 with CORS. If you still get 502, check **Railway → your backend service → Logs** for startup errors (e.g. `ZodError` for invalid `BETTER_AUTH_URL`/`FRONTEND_URL`, or DB connection failures). Fix the reported env or DB issue and redeploy.
+
 ## Creating tables in the production database
 
 You need to run migrations (or `db:push`) against the **production** `DATABASE_URL` so tables exist before the app runs.
