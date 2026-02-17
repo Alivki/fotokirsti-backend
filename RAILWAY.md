@@ -68,3 +68,20 @@ You need to run migrations (or `db:push`) against the **production** `DATABASE_U
    Use the copied URL in place of `postgres://...`. Only do this from a trusted machine and don’t commit the URL.
 
 After tables exist, redeploy or start the app; it should no longer crash on DB access.
+
+## Production readiness & cost
+
+The app is tuned for production and lower cost on Railway:
+
+| What | Why |
+|------|-----|
+| **No request logging in production** | `logger()` only runs when `NODE_ENV !== "production"` to reduce log volume and cost. |
+| **DB pool max 5** | Fewer connections so you stay within Railway Postgres limits and use less memory. |
+| **Security headers** | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` on all responses (no extra cost). |
+| **Generic 404 in production** | Response body is "Not found" only (no method/path) to avoid leaking internals. |
+| **500 errors in production** | No stack trace or internal message in JSON; only `err.message` is logged. |
+| **CORS** | Single allowed origin (`FRONTEND_URL`); includes PATCH for batch-publish. |
+
+**Cost tips:** Use the smallest Postgres plan that fits your data. Rely on `/` or `/api/health` for health checks (they don’t hit the DB). If you add more background work, consider a single worker to avoid duplicate jobs.
+
+**Auth when DB is sleeping:** Session validation (getSession) is stateless: the session cookie is refreshed with `refreshCache: true` without hitting the DB, so already logged-in users stay logged in when Postgres is sleeping. **Login** still needs the DB to verify the password, so the first login after a long idle may wait for the DB to wake.

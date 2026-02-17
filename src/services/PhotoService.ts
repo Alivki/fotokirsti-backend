@@ -119,16 +119,14 @@ export class PhotoService {
 
   async findMany(category?: string): Promise<PhotoWithUrl[]> {
     const categoryValue = category?.trim();
-    const photos = await this.db.transaction(async (tx) => {
-      return tx.query.photo.findMany({
-        where: and(
-          eq(schema.photo.published, true),
-          categoryValue
-            ? eq(schema.photo.category, categoryValue as NonNullable<PhotoRow["category"]>)
-            : undefined,
-        ),
-        orderBy: [desc(schema.photo.createdAt)],
-      });
+    const photos = await this.db.query.photo.findMany({
+      where: and(
+        eq(schema.photo.published, true),
+        categoryValue
+          ? eq(schema.photo.category, categoryValue as NonNullable<PhotoRow["category"]>)
+          : undefined,
+      ),
+      orderBy: [desc(schema.photo.createdAt)],
     });
     return photos.map((p) => ({
       ...p,
@@ -138,23 +136,19 @@ export class PhotoService {
 
   async findManyAdmin(category?: string, published?: boolean, hasPrize?: boolean): Promise<PhotoWithUrl[]> {
     const categoryValue = category?.trim();
-    const photos = await this.db.transaction(async (tx) => {
-      return tx.query.photo.findMany({
-        where: and(
-            categoryValue
-                ? eq(schema.photo.category, categoryValue as NonNullable<PhotoRow["category"]>)
-                : undefined,
-
-            published !== undefined
-                ? eq(schema.photo.published, published)
-                : undefined,
-
-            hasPrize !== undefined
-                ? eq(schema.photo.hasPrize, hasPrize)
-                : undefined
-        ),
-        orderBy: [desc(schema.photo.createdAt)],
-      });
+    const photos = await this.db.query.photo.findMany({
+      where: and(
+        categoryValue
+          ? eq(schema.photo.category, categoryValue as NonNullable<PhotoRow["category"]>)
+          : undefined,
+        published !== undefined
+          ? eq(schema.photo.published, published)
+          : undefined,
+        hasPrize !== undefined
+          ? eq(schema.photo.hasPrize, hasPrize)
+          : undefined,
+      ),
+      orderBy: [desc(schema.photo.createdAt)],
     });
 
     return photos.map((p) => ({

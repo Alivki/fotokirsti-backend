@@ -22,11 +22,11 @@ export type DbSchema = typeof schema;
  */
 export function createDb(connectionString: string) {
   const queryClient = postgres(connectionString, {
-    max: 10,
+    max: 5, // keep low for Railway (smaller plans have limited DB connections)
     idle_timeout: 60,
     connect_timeout: 10,
     max_lifetime: 60 * 30, // 30 minutes
-    keep_alive: 30, // seconds; reduces ECONNRESET from idle connection drops
+    keep_alive: 30, // reduces ECONNRESET from idle connection drops
   });
   return drizzle(queryClient, {
     schema,

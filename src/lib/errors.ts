@@ -119,7 +119,11 @@ export function globalErrorHandler(err: Error, c: Context): Response {
     return c.json(response, err.status);
   }
 
-  console.error("Unhandled error:", err);
+  if (env.NODE_ENV === "production") {
+    console.error("Unhandled error:", err.message);
+  } else {
+    console.error("Unhandled error:", err);
+  }
 
   const response: HttpAppExceptionData = {
     status: 500,
@@ -134,11 +138,13 @@ export function globalErrorHandler(err: Error, c: Context): Response {
 
 /**
  * Not found handler for Hono apps.
+ * In production, use a generic message to avoid leaking internal paths.
  */
 export function notFoundHandler(c: Context): Response {
-  const response: HttpAppExceptionData = {
-    status: 404,
-    message: `Route not found: ${c.req.method} ${c.req.path}`,
-  };
+  const message =
+    env.NODE_ENV === "production"
+      ? "Not found"
+      : `Route not found: ${c.req.method} ${c.req.path}`;
+  const response: HttpAppExceptionData = { status: 404, message };
   return c.json(response, 404);
 }

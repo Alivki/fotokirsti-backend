@@ -17,11 +17,21 @@ import protectedRoutes from "./routes/protected";
 import { globalErrorHandler, notFoundHandler } from "./lib/errors";
 
 const port = Number(process.env.PORT) || 4000;
+const isProd = env.NODE_ENV === "production";
 
 /**
  * Create fully typed Hono app
  */
 const app = new Hono<{ Variables: Variables }>();
+
+/**
+ * Security headers for all responses (no cost, small security gain).
+ */
+app.use("*", async (c, next) => {
+  await next();
+  c.res.headers.set("X-Content-Type-Options", "nosniff");
+  c.res.headers.set("X-Frame-Options", "DENY");
+});
 
 /**
  * Boot everything inside async function
@@ -31,8 +41,10 @@ async function bootstrap() {
   const ctx: AppContext = await createAppContext();
   const services: AppServices = createAppServices(ctx);
 
-  // Logger
-  app.use("*", logger());
+  // Request logging: skip in production to reduce log volume and cost
+  if (!isProd) {
+    app.use("*", logger());
+  }
 
   // Attach DI context
   app.use("*", async (c, next) => {
@@ -41,15 +53,15 @@ async function bootstrap() {
     await next();
   });
 
-  // Global CORS
+  // Global CORS (include PATCH for batch-publish)
   app.use(
-      "*",
-      cors({
-        origin: env.FRONTEND_URL,
-        credentials: true,
-        allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allowHeaders: ["Content-Type", "Authorization", "Accept", "Origin"], // Added Origin/Accept
-      })
+    "*",
+    cors({
+      origin: env.FRONTEND_URL,
+      credentials: true,
+      allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization", "Accept"],
+    }),
   );
 
   app.all("/api/auth/*", async (c) => {
@@ -57,17 +69,16 @@ async function bootstrap() {
     return auth.handler(c.req.raw);
   });
 
-  // Protected routes first so /api/photos/admin matches before /api/photos/:id
+  // Protected routes: require auth except for auth, health, and public GETs
   app.use("/api/*", async (c, next) => {
     if (c.req.path.startsWith("/api/auth")) return next();
 
     const publicPaths = ["/api/health", "/api/photos", "/api/pricelist"];
-    if (publicPaths.some(p => c.req.path === p && c.req.method === 'GET')) {
+    if (publicPaths.some((p) => c.req.path === p && c.req.method === "GET")) {
       return next();
     }
 
-    // Use 'as any' to bypass the complex Hono Context type mismatch
-    return (requireAuth as any)(c, next);
+    return requireAuth(c as unknown as Parameters<typeof requireAuth>[0], next);
   });
 
   app.route("/api", protectedRoutes);
@@ -92,14 +103,15 @@ async function bootstrap() {
     return res;
   });
 
-  // Start Bun server
   Bun.serve({
     port,
     hostname: "0.0.0.0",
     fetch: app.fetch,
   });
 
-  console.log(`🔥 Server running on port ${port}`);
+  if (!isProd) {
+    console.log(`🔥 Fotokirsti Backend: http://localhost:${port}/api`);
+  }
 }
 
 bootstrap();
