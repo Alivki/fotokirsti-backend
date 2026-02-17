@@ -22,13 +22,12 @@ export function createAuth(ctx: { db: ReturnType<typeof createDb> }) {
     session: {
       strategy: "jwt",
       expiryAge: 60 * 60 * 48, // 48 hours
+      // Stateless session validation: serve getSession from cookie only, no DB lookup.
+      // Cookie cache lasts as long as the session, so we never hit the DB for getSession
+      // (works when DB is sleeping, e.g. Railway). Login still requires DB to verify credentials.
       cookieCache: {
         enabled: true,
-        maxAge: 60 * 60, // 1 hour
-        // Refresh cookie before expiry without hitting the DB (stateless). getSession then
-        // never needs the DB, so existing sessions work when DB is sleeping (e.g. Railway).
-        // Login still requires DB to verify credentials.
-        refreshCache: true,
+        maxAge: 60 * 60 * 48, // 48h — match expiryAge so we stay stateless for full session
       },
     },
     advanced: {

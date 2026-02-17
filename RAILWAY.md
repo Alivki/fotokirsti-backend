@@ -84,4 +84,4 @@ The app is tuned for production and lower cost on Railway:
 
 **Cost tips:** Use the smallest Postgres plan that fits your data. Rely on `/` or `/api/health` for health checks (they don’t hit the DB). If you add more background work, consider a single worker to avoid duplicate jobs.
 
-**Auth when DB is sleeping:** Session validation (getSession) is stateless: the session cookie is refreshed with `refreshCache: true` without hitting the DB, so already logged-in users stay logged in when Postgres is sleeping. **Login** still needs the DB to verify the password, so the first login after a long idle may wait for the DB to wake.
+**Auth when DB is sleeping:** Session validation (getSession) is stateless: the session is served from a signed cookie only (cookieCache, 48h). No DB lookup for getSession, so already logged-in users stay logged in when Postgres is sleeping. **Login** still needs the DB to verify the password.
