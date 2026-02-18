@@ -13,7 +13,8 @@ export type PhotoWithUrl = PhotoRow & { imageUrl: string };
 const PRESIGN_GET_EXPIRES_IN = 3600; 
 
 export class PhotoService {
-  constructor(private db: ReturnType<typeof import("../db").createDb>) {}
+  constructor(private db: ReturnType<typeof import("../db").createDb>) {
+  }
 
   private getImageUrl(s3Key: string): string {
     return s3.file(s3Key, s3Options).presign({
@@ -26,14 +27,14 @@ export class PhotoService {
   async getBatchUploadUrls(files: { name: string; type: string }[]) {
     if (!files?.length) {
       throw HTTPAppException.BadRequest(
-        "At least one file is required to generate upload URLs",
+          "At least one file is required to generate upload URLs",
       );
     }
 
     const items = files.map((file) => {
       const fileId = generateId();
       const extension = file.name.split(".").pop() ?? "";
-      const s3Key = `photos/${fileId}.${extension}`;
+      const s3Key = `photos/${fileId}/original`;
 
       const uploadUrl = s3.presign(s3Key, {
         ...s3Options,
@@ -42,18 +43,19 @@ export class PhotoService {
         expiresIn: 3600,
       });
 
-      return { uploadUrl, s3Key, fileId };
+      return {uploadUrl, s3Key, fileId};
     });
 
     await this.db.transaction(async (tx) => {
       const now = new Date();
       await tx.insert(schema.photo).values(
-        items.map(({ fileId, s3Key }) => ({
-          id: fileId,
-          s3Key,
-          published: false,
-          updatedAt: now,
-        })),
+          items.map(({fileId, s3Key}) => ({
+            id: fileId,
+            s3Key,
+            published: false,
+            status: "processing" as const,
+            updatedAt: now,
+          })),
       );
     });
 
@@ -63,7 +65,7 @@ export class PhotoService {
   async createPhotos(data: PhotoInsert[]) {
     if (!data?.length) {
       throw HTTPAppException.UnprocessableEntity(
-        "At least one photo record is required",
+          "At least one photo record is required",
       );
     }
 
@@ -74,22 +76,22 @@ export class PhotoService {
 
     return this.db.transaction(async (tx) => {
       return tx
-        .insert(schema.photo)
-        .values(records)
-        .onConflictDoUpdate({
-          target: schema.photo.id,
-          set: {
-            title: sql.raw("excluded.title"),
-            alt: sql.raw("excluded.alt"),
-            published: sql.raw("excluded.published"),
-            category: sql.raw("excluded.category"),
-            hasPrize: sql.raw("excluded.has_prize"),
-            prizeTitle: sql.raw("excluded.prize_title"),
-            prizeMedal: sql.raw("excluded.prize_medal"),
-            updatedAt: sql.raw("excluded.updated_at"),
-          },
-        })
-        .returning();
+          .insert(schema.photo)
+          .values(records)
+          .onConflictDoUpdate({
+            target: schema.photo.id,
+            set: {
+              title: sql.raw("excluded.title"),
+              alt: sql.raw("excluded.alt"),
+              published: sql.raw("excluded.published"),
+              category: sql.raw("excluded.category"),
+              hasPrize: sql.raw("excluded.has_prize"),
+              prizeTitle: sql.raw("excluded.prize_title"),
+              prizeMedal: sql.raw("excluded.prize_medal"),
+              updatedAt: sql.raw("excluded.updated_at"),
+            },
+          })
+          .returning();
     });
   }
 
@@ -99,16 +101,16 @@ export class PhotoService {
     }
     if (!data || Object.keys(data).length === 0) {
       throw HTTPAppException.BadRequest(
-        "Update data is required (e.g. title, published, category)",
+          "Update data is required (e.g. title, published, category)",
       );
     }
 
     return this.db.transaction(async (tx) => {
       const [updated] = await tx
-        .update(schema.photo)
-        .set(data)
-        .where(eq(schema.photo.id, id))
-        .returning();
+          .update(schema.photo)
+          .set(data)
+          .where(eq(schema.photo.id, id))
+          .returning();
 
       if (!updated) {
         throw HTTPAppException.NotFound("Photo");
@@ -121,10 +123,10 @@ export class PhotoService {
     const categoryValue = category?.trim();
     const photos = await this.db.query.photo.findMany({
       where: and(
-        eq(schema.photo.published, true),
-        categoryValue
-          ? eq(schema.photo.category, categoryValue as NonNullable<PhotoRow["category"]>)
-          : undefined,
+          eq(schema.photo.published, true),
+          categoryValue
+              ? eq(schema.photo.category, categoryValue as NonNullable<PhotoRow["category"]>)
+              : undefined,
       ),
       orderBy: [desc(schema.photo.createdAt)],
     });
@@ -135,26 +137,39 @@ export class PhotoService {
   }
 
   async findManyAdmin(category?: string, published?: boolean, hasPrize?: boolean): Promise<PhotoWithUrl[]> {
+    const cloudFrontDomain = process.env.CLOUD_FRONT_URL;
+
     const categoryValue = category?.trim();
     const photos = await this.db.query.photo.findMany({
       where: and(
-        categoryValue
-          ? eq(schema.photo.category, categoryValue as NonNullable<PhotoRow["category"]>)
-          : undefined,
-        published !== undefined
-          ? eq(schema.photo.published, published)
-          : undefined,
-        hasPrize !== undefined
-          ? eq(schema.photo.hasPrize, hasPrize)
-          : undefined,
+          categoryValue
+              ? eq(schema.photo.category, categoryValue as NonNullable<typeof schema.photo.$inferSelect["category"]>)
+              : undefined,
+          published !== undefined
+              ? eq(schema.photo.published, published)
+              : undefined,
+          hasPrize !== undefined
+              ? eq(schema.photo.hasPrize, hasPrize)
+              : undefined,
       ),
       orderBy: [desc(schema.photo.createdAt)],
     });
 
-    return photos.map((p) => ({
-      ...p,
-      imageUrl: this.getImageUrl(p.s3Key),
-    }));
+    return photos.map((p) => {
+      let imageUrl: string;
+
+      if (p.status === "ready") {
+        imageUrl = `https://${cloudFrontDomain}/photos/${p.id}/preview.webp`;
+      } else {
+        //imageUrl = `https://${cloudFrontDomain}/${p.s3Key}`;
+        imageUrl = `https://${cloudFrontDomain}/${p.s3Key}`;
+      }
+
+      return {
+        ...p,
+        imageUrl,
+      };
+    });
   }
 
   async findOne(id: string): Promise<PhotoWithUrl> {
@@ -164,8 +179,8 @@ export class PhotoService {
 
     const result = await this.db.query.photo.findFirst({
       where: and(
-        eq(schema.photo.id, id),
-        eq(schema.photo.published, true),
+          eq(schema.photo.id, id),
+          eq(schema.photo.published, true),
       ),
     });
 
@@ -180,35 +195,44 @@ export class PhotoService {
   }
 
   async deleteOne(id: string): Promise<PhotoRow | undefined> {
+    const getS3KeysForPhoto = (id: string) => [
+      `photos/${id}/original`,
+      `photos/${id}/preview.webp`,
+      `photos/${id}/medium.webp`,
+      `photos/${id}/large.webp`,
+    ];
+
     if (!id?.trim()) {
       throw HTTPAppException.BadRequest("Photo ID is required");
     }
 
     const s3Keys = await this.db.transaction(async (tx) => {
       const [row] = await tx
-        .select({ s3Key: schema.photo.s3Key })
-        .from(schema.photo)
-        .where(eq(schema.photo.id, id))
-        .limit(1);
+          .select({s3Key: schema.photo.s3Key})
+          .from(schema.photo)
+          .where(eq(schema.photo.id, id))
+          .limit(1);
 
       if (!row) {
         throw HTTPAppException.NotFound("Photo");
       }
 
       const [deleted] = await tx
-        .delete(schema.photo)
-        .where(eq(schema.photo.id, id))
-        .returning();
+          .delete(schema.photo)
+          .where(eq(schema.photo.id, id))
+          .returning();
 
-      return { s3Key: row.s3Key, deleted };
+      return {s3Key: row.s3Key, deleted};
     });
 
+    const keys = getS3KeysForPhoto(id);
+
     try {
-      await s3.file(s3Keys.s3Key, s3Options).delete();
+      await Promise.all(keys.map(key => s3.file(key, s3Options).delete()));
     } catch (e) {
-      console.error(`S3 delete failed for ${s3Keys.s3Key}:`, e);
+      console.error(`S3 cleanup failed for ${id}:`, e);
       throw HTTPAppException.InternalError(
-        "Photo was removed from the database but storage cleanup failed. You may need to remove the file manually.",
+          "Photo was removed from the database but storage cleanup failed. You may need to remove the file manually.",
       );
     }
 
@@ -237,7 +261,7 @@ export class PhotoService {
 
     const result = await this.db.transaction(async (tx) => {
       const existingPhotos = await tx
-          .select({ id: schema.photo.id })
+          .select({id: schema.photo.id})
           .from(schema.photo)
           .where(inArray(schema.photo.id, uniqueIds));
 
@@ -267,59 +291,58 @@ export class PhotoService {
   }
 
   async deleteMany(ids: string[]) {
+    const getS3KeysForPhoto = (id: string) => [
+      `photos/${id}/original`,
+      `photos/${id}/preview.webp`,
+      `photos/${id}/medium.webp`,
+      `photos/${id}/large.webp`,
+    ];
+
     if (!ids?.length) {
-      throw HTTPAppException.BadRequest(
-        "At least one photo ID is required",
-      );
+      throw HTTPAppException.BadRequest("At least one photo ID is required");
     }
 
     const uniqueIds = Array.from(new Set(ids));
     if (uniqueIds.length !== ids.length) {
-      throw HTTPAppException.UnprocessableEntity(
-        "Duplicate photo IDs are not allowed",
-      );
+      throw HTTPAppException.UnprocessableEntity("Duplicate photo IDs are not allowed");
     }
 
-    const { deleted, s3KeysToDelete } = await this.db.transaction(async (tx) => {
+    // 1. Delete from Database
+    const deletedRows = await this.db.transaction(async (tx) => {
+      // We check existence first to stay consistent with your original logic
       const rows = await tx
-        .select({ id: schema.photo.id, s3Key: schema.photo.s3Key })
-        .from(schema.photo)
-        .where(inArray(schema.photo.id, uniqueIds));
+          .select({id: schema.photo.id})
+          .from(schema.photo)
+          .where(inArray(schema.photo.id, uniqueIds));
 
       if (!rows.length) {
         throw HTTPAppException.NotFound("Photos");
       }
 
-      const deleted = await tx
-        .delete(schema.photo)
-        .where(inArray(schema.photo.id, uniqueIds))
-        .returning();
-
-      return {
-        deleted,
-        s3KeysToDelete: rows.map((r) => r.s3Key),
-      };
+      return await tx
+          .delete(schema.photo)
+          .where(inArray(schema.photo.id, uniqueIds))
+          .returning();
     });
 
-    const s3Errors: string[] = [];
-    for (const key of s3KeysToDelete) {
-      try {
-        await s3.file(key, s3Options).delete();
-      } catch (e) {
-        console.error(`S3 delete failed for ${key}:`, e);
-        s3Errors.push(key);
-      }
-    }
+    const allKeysToDelete = deletedRows.flatMap((row) => getS3KeysForPhoto(row.id));
+
+    const results = await Promise.allSettled(
+        allKeysToDelete.map((key) => s3.file(key, s3Options).delete())
+    );
+
+    const s3Errors = results
+        .map((res, index) => (res.status === "rejected" ? allKeysToDelete[index] : null))
+        .filter((key): key is string => key !== null);
 
     if (s3Errors.length > 0) {
       throw new HTTPAppException({
         status: 500,
-        message:
-          "Photos were removed from the database but some storage files could not be deleted.",
-        meta: { failedKeys: s3Errors },
+        message: "Photos were removed from the database but some storage files could not be deleted.",
+        meta: {failedKeys: s3Errors},
       });
     }
 
-    return deleted;
+    return deletedRows;
   }
 }
