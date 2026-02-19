@@ -5,6 +5,6 @@ export default defineConfig({
     out: "./drizzle",
     dialect: "postgresql",
     dbCredentials: {
-        url: process.env.DATABASE_URL || "postgres://iver:iver@localhost:5432/fotokirsti_db",
+        url: process.env.DATABASE_URL || "",
     },
 });
