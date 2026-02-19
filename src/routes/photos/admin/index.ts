@@ -3,17 +3,18 @@ import { z } from "zod";
 import { PhotoService } from "../../../services/PhotoService";
 import {zValidator} from "@hono/zod-validator";
 
-const CATEGORY_MAP: Record<string, string> = {
-    barn: "Barn", familie: "Familie", portrett: "Portrett",
-    konfirmant: "Konfirmant", bryllup: "Bryllup",
-    produkt: "Produkt", reklame: "Reklame",
-};
+const categoryEnum = z.enum([
+    "Barn",
+    "Familie",
+    "Portrett",
+    "Konfirmant",
+    "Bryllup",
+    "Produkt",
+    "Reklame",
+]);
 
 const querySchema = z.object({
-    category: z.string().optional().transform((v) => {
-        if (!v?.trim()) return undefined;
-        return CATEGORY_MAP[v.toLowerCase().trim()] ?? v;
-    }),
+    category: categoryEnum.optional(),
 
     published: z
         .enum(["true", "false"])
