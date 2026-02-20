@@ -9,9 +9,7 @@ import { s3Options } from "../lib/env";
 type PhotoInsert = (typeof schema.photo.$inferInsert);
 type PhotoRow = (typeof schema.photo.$inferSelect);
 
-/** Row shape when selecting only photoSelectFields. */
 type PhotoSelected = Pick<PhotoRow, keyof typeof photoSelectFields>;
-/** Public photo shape: only fields in photoSelectFields + imageUrl. */
 export type PhotoWithUrl = PhotoSelected & { imageUrl: string };
 
 const PRESIGN_GET_EXPIRES_IN = 3600;
@@ -22,7 +20,9 @@ const photoSelectFields = {
   id: true,
   title: true,
   alt: true,
+  published: true,
   category: true,
+  hasPrize: true,
   prizeTitle: true,
   prizeMedal: true,
   width: true,
@@ -143,23 +143,36 @@ export class PhotoService {
     const categoryValue = category?.trim();
     const offset = (page - 1) * limit;
 
-    const whereClause = [
-      eq(schema.photo.published, true),
-      eq(schema.photo.status, "ready"),
-      categoryValue ? eq(schema.photo.category, categoryValue as NonNullable<PhotoRow["category"]>) : undefined,
-      hasPrize !== undefined ? eq(schema.photo.hasPrize, hasPrize) : undefined,
-    ].filter(Boolean);
+    const photos = await this.db.query.photo.findMany({
+      columns: { ...photoSelectFields },
+      where: and(
+          eq(schema.photo.published, true),
+          eq(schema.photo.status, "ready"),
+          categoryValue
+              ? eq(schema.photo.category, categoryValue as NonNullable<typeof schema.photo.$inferSelect["category"]>)
+              : undefined,
+          hasPrize !== undefined
+              ? eq(schema.photo.hasPrize, hasPrize)
+              : undefined,
+      ),
+      limit,
+      offset,
+      orderBy: [desc(schema.photo.createdAt)],
+    });
 
-    const [photos, countResult] = await Promise.all([
-      this.db.query.photo.findMany({
-        columns: photoSelectFields,
-        where: and(...whereClause),
-        orderBy: [desc(schema.photo.createdAt)],
-        limit,
-        offset,
-      }),
-      this.db.select({ count: sql<number>`count(*)` }).from(schema.photo).where(and(...whereClause)),
-    ]);
+    const countResult = await this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(schema.photo)
+        .where(and(
+            eq(schema.photo.published, true),
+            eq(schema.photo.status, "ready"),
+            categoryValue
+                ? eq(schema.photo.category, categoryValue as NonNullable<typeof schema.photo.$inferSelect["category"]>)
+                : undefined,
+            hasPrize !== undefined
+                ? eq(schema.photo.hasPrize, hasPrize)
+                : undefined,
+        ));
 
     const total = Number(countResult[0]?.count ?? 0);
 
@@ -171,10 +184,10 @@ export class PhotoService {
     return { photos: photosWithUrl, total };
   }
 
-  async findManyAdmin(category?: string, published?: boolean, hasPrize?: boolean): Promise<PhotoWithUrl[]> {
+  async findManyAdmin(category?: string, published?: boolean, hasPrize?: boolean): Promise<{ photos: PhotoWithUrl[] }> {
     const categoryValue = category?.trim();
     const photos = await this.db.query.photo.findMany({
-      columns: { ...photoSelectFields, status: true, s3Key: true },
+      columns: { ...photoSelectFields },
       where: and(
           categoryValue
               ? eq(schema.photo.category, categoryValue as NonNullable<typeof schema.photo.$inferSelect["category"]>)
@@ -189,15 +202,12 @@ export class PhotoService {
       orderBy: [desc(schema.photo.createdAt)],
     });
 
-    return photos.map((p) => {
-      const row = p as PhotoSelected & { status: PhotoRow["status"]; s3Key: PhotoRow["s3Key"] };
-      const imageUrl =
-        row.status === "ready"
-          ? `https://${cloudFrontDomain}/photos/${row.id}/preview.webp`
-          : `https://${cloudFrontDomain}/${row.s3Key}`;
-      const { status: _s, s3Key: _k, ...rest } = row;
-      return { ...rest, imageUrl } as PhotoWithUrl;
+    const photosWithUrl: PhotoWithUrl[] = photos.map((p) => {
+      const row = p as PhotoSelected;
+      return { ...row, imageUrl: `https://${cloudFrontDomain}/photos/${row.id}/preview.webp` };
     });
+
+    return { photos: photosWithUrl };
   }
 
   async findOne(id: string): Promise<PhotoWithUrl> {

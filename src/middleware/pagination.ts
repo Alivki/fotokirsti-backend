@@ -7,15 +7,12 @@ const MAX_LIMIT = 100;
 const MIN_LIMIT = 1;
 const DEFAULT_PAGE = 1;
 
-type Variables = {
-  limit: number;
-  page: number;
-};
-
 const querySchema = z.object({
   limit: z.coerce.number().min(1).max(100).optional(),
   page: z.coerce.number().min(1).optional(),
 });
+
+type Variables = z.infer<typeof querySchema>;
 
 export const withPagination = (override?: Partial<Variables>) =>
   [
