@@ -3,6 +3,7 @@ import { z } from "zod";
 import { PhotoService } from "../../services/PhotoService";
 import {zValidator} from "@hono/zod-validator";
 import {withPagination} from "../../middleware/pagination";
+import {createMiddleware} from "hono/factory";
 
 const categoryEnum = z.enum([
     "Barn",
@@ -14,8 +15,14 @@ const categoryEnum = z.enum([
     "Reklame",
 ]);
 
+const normalizeCategory = z.preprocess((val) => {
+    if (typeof val !== "string") return val;
+
+    return val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
+}, categoryEnum);
+
 const querySchema = z.object({
-    category: categoryEnum.optional(),
+    category: normalizeCategory.optional(),
     hasPrize: z
         .enum(["true", "false"])
         .optional()
@@ -32,8 +39,8 @@ const querySchema = z.object({
 
 export const getManyRoute = route().get(
     "/",
-    zValidator('query', querySchema),
     ...withPagination(),
+    zValidator('query', querySchema),
     async (c) => {
     const { db } = c.get("ctx");
     const { category, hasPrize } = c.req.valid('query');

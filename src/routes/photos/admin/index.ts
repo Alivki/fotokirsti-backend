@@ -13,8 +13,14 @@ const categoryEnum = z.enum([
     "Reklame",
 ]);
 
+const normalizeCategory = z.preprocess((val) => {
+    if (typeof val !== "string") return val;
+
+    return val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
+}, categoryEnum);
+
 const querySchema = z.object({
-    category: categoryEnum.optional(),
+    category: normalizeCategory.optional(),
 
     published: z
         .enum(["true", "false"])
