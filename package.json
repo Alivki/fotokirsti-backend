@@ -16,11 +16,18 @@
   },
   "dependencies": {
     "@hono/zod-validator": "^0.7.6",
+    "@react-email/components": "0.5.2",
+    "@react-email/render": "1.2.2",
+    "@types/react": "^19.2.14",
     "better-auth": "^1.4.18",
     "drizzle-orm": "^0.45.1",
     "hono": "^4.11.9",
+    "hono-rate-limiter": "^0.5.3",
     "postgres": "^3.4.8",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "resend": "^6.9.2",
+    "unstorage": "^1.17.4",
     "zod": "^4.3.6"
   },
   "devDependencies": {

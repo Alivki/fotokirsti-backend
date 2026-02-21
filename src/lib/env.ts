@@ -49,6 +49,9 @@ const envSchema = z
 
     // Optional: Email (Resend)
     RESEND_API_KEY: z.string().optional(),
+    RESEND_EMAIL: z.string().email().optional(),
+    // Bearer token for POST /api/email (use a random secret; defaults to RESEND_API_KEY if unset)
+    CONTACT_API_KEY: z.string().optional(),
   })
 ;
 
@@ -66,6 +69,8 @@ const testEnvVariables: Env = {
   AWS_REGION: "eu-north-1",
   AWS_SECRET_ACCESS_KEY: "test-secret",
   RESEND_API_KEY: undefined,
+  RESEND_EMAIL: undefined,
+  CONTACT_API_KEY: "test",
 };
 
 /**
