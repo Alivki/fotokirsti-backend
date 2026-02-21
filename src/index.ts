@@ -73,8 +73,17 @@ async function bootstrap() {
   app.use("/api/*", async (c, next) => {
     if (c.req.path.startsWith("/api/auth")) return next();
 
-    const publicPaths = ["/api/health", "/api/photos", "/api/pricelist"];
-    if (publicPaths.some((p) => c.req.path === p && c.req.method === "GET")) {
+    const publicPaths = [
+      { path: "/api/health", method: "GET" },
+      { path: "/api/photos", method: "GET" },
+      { path: "/api/pricelist", method: "GET" },
+      { path: "/api/email", method: "POST" },
+    ];
+    if (
+      publicPaths.some(
+        (p) => c.req.path === p.path && c.req.method === p.method
+      )
+    ) {
       return next();
     }
 
