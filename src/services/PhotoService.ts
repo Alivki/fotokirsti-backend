@@ -139,9 +139,9 @@ export class PhotoService {
     });
   }
 
-  async findMany(category?: string, hasPrize?: boolean, limit: number = 50, page: number = 1,): Promise<{ photos: PhotoWithUrl[]; total: number }> {
+  async findMany(category?: string, hasPrize?: boolean, pageSize: number = 50, page: number = 0): Promise<{ photos: PhotoWithUrl[]; total: number }> {
     const categoryValue = category?.trim();
-    const offset = (page - 1) * limit;
+    const offset = page * pageSize;
 
     const photos = await this.db.query.photo.findMany({
       columns: { ...photoSelectFields },
@@ -155,7 +155,7 @@ export class PhotoService {
               ? eq(schema.photo.hasPrize, hasPrize)
               : undefined,
       ),
-      limit,
+      limit: pageSize,
       offset,
       orderBy: [desc(schema.photo.createdAt)],
     });
