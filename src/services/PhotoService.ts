@@ -10,11 +10,33 @@ type PhotoInsert = (typeof schema.photo.$inferInsert);
 type PhotoRow = (typeof schema.photo.$inferSelect);
 
 type PhotoSelected = Pick<PhotoRow, keyof typeof photoSelectFields>;
-export type PhotoWithUrl = PhotoSelected & { imageUrl: string };
+const getImageUrls = (id: string) => {
+  const base = `https://${cloudFrontDomain}/photos/${id}`;
+  return {
+    previewUrl: `${base}/preview.webp`,
+    mediumUrl: `${base}/medium.webp`,
+    largeUrl: `${base}/large.webp`,
+  };
+};
+
+export type PhotoWithUrl = PhotoSelected & {
+  previewUrl: string;
+  mediumUrl: string;
+  largeUrl: string;
+};
+
+export type PhotoAdminWithUrl = PhotoSelected & { imageUrl: string };
 
 const PRESIGN_GET_EXPIRES_IN = 3600;
 
 const cloudFrontDomain = process.env.CLOUD_FRONT_URL;
+
+const getS3KeysForPhoto = (id: string) => [
+  `photos/${id}/original`,
+  `photos/${id}/preview.webp`,
+  `photos/${id}/medium.webp`,
+  `photos/${id}/large.webp`,
+];
 
 const photoSelectFields = {
   id: true,
@@ -33,8 +55,7 @@ const photoSelectFields = {
 };
 
 export class PhotoService {
-  constructor(private db: ReturnType<typeof import("../db").createDb>) {
-  }
+  constructor(private db: ReturnType<typeof import("../db").createDb>) {}
 
   private getImageUrl(s3Key: string): string {
     return s3.file(s3Key, s3Options).presign({
@@ -139,6 +160,28 @@ export class PhotoService {
     });
   }
 
+  async findOne(id: string): Promise<PhotoWithUrl> {
+    if (!id?.trim()) {
+      throw HTTPAppException.BadRequest("Photo ID is required");
+    }
+
+    const result = await this.db.query.photo.findFirst({
+      columns: photoSelectFields,
+      where: and(
+          eq(schema.photo.id, id),
+          eq(schema.photo.published, true),
+          eq(schema.photo.status, "ready"),
+      ),
+    });
+
+    if (!result) {
+      throw HTTPAppException.NotFound("Photo");
+    }
+
+    const row = result as PhotoSelected;
+    return { ...row, ...getImageUrls(row.id) };
+  }
+
   async findMany(category?: string, hasPrize?: boolean, pageSize: number = 50, page: number = 0): Promise<{ photos: PhotoWithUrl[]; total: number }> {
     const categoryValue = category?.trim();
     const offset = page * pageSize;
@@ -178,13 +221,13 @@ export class PhotoService {
 
     const photosWithUrl: PhotoWithUrl[] = photos.map((p) => {
       const row = p as PhotoSelected;
-      return { ...row, imageUrl: `https://${cloudFrontDomain}/photos/${row.id}/preview.webp` };
+      return { ...row, ...getImageUrls(row.id) };
     });
 
     return { photos: photosWithUrl, total };
   }
 
-  async findManyAdmin(category?: string, published?: boolean, hasPrize?: boolean): Promise<{ photos: PhotoWithUrl[] }> {
+  async findManyAdmin(category?: string, published?: boolean, hasPrize?: boolean): Promise<{ photos: PhotoAdminWithUrl[] }> {
     const categoryValue = category?.trim();
     const photos = await this.db.query.photo.findMany({
       columns: { ...photoSelectFields },
@@ -202,44 +245,15 @@ export class PhotoService {
       orderBy: [desc(schema.photo.createdAt)],
     });
 
-    const photosWithUrl: PhotoWithUrl[] = photos.map((p) => {
+    const photosWithUrl: PhotoAdminWithUrl[] = photos.map((p) => {
       const row = p as PhotoSelected;
-      return { ...row, imageUrl: `https://${cloudFrontDomain}/photos/${row.id}/preview.webp` };
+      return { ...row, imageUrl: getImageUrls(row.id).previewUrl };
     });
 
     return { photos: photosWithUrl };
   }
 
-  async findOne(id: string): Promise<PhotoWithUrl> {
-    if (!id?.trim()) {
-      throw HTTPAppException.BadRequest("Photo ID is required");
-    }
-
-    const result = await this.db.query.photo.findFirst({
-      columns: photoSelectFields,
-      where: and(
-          eq(schema.photo.id, id),
-          eq(schema.photo.published, true),
-          eq(schema.photo.status, "ready"),
-      ),
-    });
-
-    if (!result) {
-      throw HTTPAppException.NotFound("Photo");
-    }
-
-    const row = result as PhotoSelected;
-    return { ...row, imageUrl: `https://${cloudFrontDomain}/photos/${row.id}/preview.webp` };
-  }
-
   async deleteOne(id: string): Promise<PhotoRow | undefined> {
-    const getS3KeysForPhoto = (id: string) => [
-      `photos/${id}/original`,
-      `photos/${id}/preview.webp`,
-      `photos/${id}/medium.webp`,
-      `photos/${id}/large.webp`,
-    ];
-
     if (!id?.trim()) {
       throw HTTPAppException.BadRequest("Photo ID is required");
     }
@@ -275,6 +289,55 @@ export class PhotoService {
     }
 
     return s3Keys.deleted;
+  }
+
+  async deleteMany(ids: string[]) {
+    if (!ids?.length) {
+      throw HTTPAppException.BadRequest("At least one photo ID is required");
+    }
+
+    const uniqueIds = Array.from(new Set(ids));
+    if (uniqueIds.length !== ids.length) {
+      throw HTTPAppException.UnprocessableEntity("Duplicate photo IDs are not allowed");
+    }
+
+    // 1. Delete from Database
+    const deletedRows = await this.db.transaction(async (tx) => {
+      // We check existence first to stay consistent with your original logic
+      const rows = await tx
+          .select({id: schema.photo.id})
+          .from(schema.photo)
+          .where(inArray(schema.photo.id, uniqueIds));
+
+      if (!rows.length) {
+        throw HTTPAppException.NotFound("Photos");
+      }
+
+      return await tx
+          .delete(schema.photo)
+          .where(inArray(schema.photo.id, uniqueIds))
+          .returning();
+    });
+
+    const allKeysToDelete = deletedRows.flatMap((row) => getS3KeysForPhoto(row.id));
+
+    const results = await Promise.allSettled(
+        allKeysToDelete.map((key) => s3.file(key, s3Options).delete())
+    );
+
+    const s3Errors = results
+        .map((res, index) => (res.status === "rejected" ? allKeysToDelete[index] : null))
+        .filter((key): key is string => key !== null);
+
+    if (s3Errors.length > 0) {
+      throw new HTTPAppException({
+        status: 500,
+        message: "Photos were removed from the database but some storage files could not be deleted.",
+        meta: {failedKeys: s3Errors},
+      });
+    }
+
+    return deletedRows;
   }
 
   async batchPublish(ids: string[], published: boolean) {
@@ -326,61 +389,5 @@ export class PhotoService {
       count: result.length,
       photos: result,
     };
-  }
-
-  async deleteMany(ids: string[]) {
-    const getS3KeysForPhoto = (id: string) => [
-      `photos/${id}/original`,
-      `photos/${id}/preview.webp`,
-      `photos/${id}/medium.webp`,
-      `photos/${id}/large.webp`,
-    ];
-
-    if (!ids?.length) {
-      throw HTTPAppException.BadRequest("At least one photo ID is required");
-    }
-
-    const uniqueIds = Array.from(new Set(ids));
-    if (uniqueIds.length !== ids.length) {
-      throw HTTPAppException.UnprocessableEntity("Duplicate photo IDs are not allowed");
-    }
-
-    // 1. Delete from Database
-    const deletedRows = await this.db.transaction(async (tx) => {
-      // We check existence first to stay consistent with your original logic
-      const rows = await tx
-          .select({id: schema.photo.id})
-          .from(schema.photo)
-          .where(inArray(schema.photo.id, uniqueIds));
-
-      if (!rows.length) {
-        throw HTTPAppException.NotFound("Photos");
-      }
-
-      return await tx
-          .delete(schema.photo)
-          .where(inArray(schema.photo.id, uniqueIds))
-          .returning();
-    });
-
-    const allKeysToDelete = deletedRows.flatMap((row) => getS3KeysForPhoto(row.id));
-
-    const results = await Promise.allSettled(
-        allKeysToDelete.map((key) => s3.file(key, s3Options).delete())
-    );
-
-    const s3Errors = results
-        .map((res, index) => (res.status === "rejected" ? allKeysToDelete[index] : null))
-        .filter((key): key is string => key !== null);
-
-    if (s3Errors.length > 0) {
-      throw new HTTPAppException({
-        status: 500,
-        message: "Photos were removed from the database but some storage files could not be deleted.",
-        meta: {failedKeys: s3Errors},
-      });
-    }
-
-    return deletedRows;
   }
 }
